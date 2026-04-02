@@ -1,0 +1,182 @@
+[
+  {
+    "id": 0,
+    "question": "What is the capital of France?",
+    "expected": "Paris",
+    "category": "factual"
+  },
+  {
+    "id": 1,
+    "question": "What is 15 + 27?",
+    "expected": "42",
+    "category": "math"
+  },
+  {
+    "id": 2,
+    "question": "If a train travels at 60 miles per hour, how far will it travel in 2 hours?",
+    "expected": "120 miles",
+    "category": "math"
+  },
+  {
+    "id": 3,
+    "question": "What is the largest planet in our solar system?",
+    "expected": "Jupiter",
+    "category": "factual"
+  },
+  {
+    "id": 4,
+    "question": "What is 8 multiplied by 7?",
+    "expected": "56",
+    "category": "math"
+  },
+  {
+    "id": 5,
+    "question": "Who wrote the play Romeo and Juliet?",
+    "expected": "Shakespeare",
+    "category": "factual"
+  },
+  {
+    "id": 6,
+    "question": "If you have 3 apples and give away 1, how many do you have left?",
+    "expected": "2",
+    "category": "math"
+  },
+  {
+    "id": 7,
+    "question": "What is the boiling point of water in Celsius?",
+    "expected": "100",
+    "category": "factual"
+  },
+  {
+    "id": 8,
+    "question": "What is the square root of 144?",
+    "expected": "12",
+    "category": "math"
+  },
+  {
+    "id": 9,
+    "question": "What language is primarily spoken in Brazil?",
+    "expected": "Portuguese",
+    "category": "factual"
+  },
+  {
+    "id": 10,
+    "question": "A baker makes 24 cookies and sells them in packs of 6. How many packs can he make?",
+    "expected": "4",
+    "category": "math"
+  },
+  {
+    "id": 11,
+    "question": "What is the chemical symbol for gold?",
+    "expected": "Au",
+    "category": "factual"
+  },
+  {
+    "id": 12,
+    "question": "If today is Monday, what day will it be in 3 days?",
+    "expected": "Thursday",
+    "category": "reasoning"
+  },
+  {
+    "id": 13,
+    "question": "What is 100 divided by 4?",
+    "expected": "25",
+    "category": "math"
+  },
+  {
+    "id": 14,
+    "question": "What continent is Egypt located in?",
+    "expected": "Africa",
+    "category": "factual"
+  },
+  {
+    "id": 15,
+    "question": "A rectangle has a length of 5 and a width of 3. What is its area?",
+    "expected": "15",
+    "category": "math"
+  },
+  {
+    "id": 16,
+    "question": "How many sides does a hexagon have?",
+    "expected": "6",
+    "category": "factual"
+  },
+  {
+    "id": 17,
+    "question": "If all roses are flowers and some flowers fade quickly, can we conclude that some roses fade quickly?",
+    "expected": "not necessarily",
+    "category": "reasoning"
+  },
+  {
+    "id": 18,
+    "question": "What is 2 to the power of 10?",
+    "expected": "1024",
+    "category": "math"
+  },
+  {
+    "id": 19,
+    "question": "What is the speed of light approximately in km/s?",
+    "expected": "300000",
+    "category": "factual"
+  },
+  {
+    "id": 20,
+    "question": "If a shirt costs $20 and is discounted by 25%, what is the sale price?",
+    "expected": "15",
+    "category": "math"
+  },
+  {
+    "id": 21,
+    "question": "What planet is known as the Red Planet?",
+    "expected": "Mars",
+    "category": "factual"
+  },
+  {
+    "id": 22,
+    "question": "There are 5 birds on a wire. 2 fly away. How many remain?",
+    "expected": "3",
+    "category": "math"
+  },
+  {
+    "id": 23,
+    "question": "What is the freezing point of water in Fahrenheit?",
+    "expected": "32",
+    "category": "factual"
+  },
+  {
+    "id": 24,
+    "question": "If all mammals are warm-blooded and a whale is a mammal, is a whale warm-blooded?",
+    "expected": "yes",
+    "category": "reasoning"
+  },
+  {
+    "id": 25,
+    "question": "What is 9 squared?",
+    "expected": "81",
+    "category": "math"
+  },
+  {
+    "id": 26,
+    "question": "Which ocean is the largest?",
+    "expected": "Pacific",
+    "category": "factual"
+  },
+  {
+    "id": 27,
+    "question": "A car travels 180 km in 3 hours. What is its average speed?",
+    "expected": "60",
+    "category": "math"
+  },
+  {
+    "id": 28,
+    "question": "What is the atomic number of carbon?",
+    "expected": "6",
+    "category": "factual"
+  },
+  {
+    "id": 29,
+    "question": "If you flip a fair coin twice, what is the probability of getting two heads?",
+    "expected": "0.25",
+    "category": "reasoning"
+  }
+]

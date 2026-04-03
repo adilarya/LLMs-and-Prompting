@@ -4,10 +4,10 @@ A Python project that evaluates three prompting techniques — **zero-shot**, **
 
 | Model | Parameters |
 |---|---|
-| `EleutherAI/gpt-neo-1.3B` | ~1.3 B |
-| `EleutherAI/gpt-neo-2.7B` | ~2.7 B |
+| `meta-llama/Llama-3.2-3B-Instruct` | ~3.21 B |
+| `Qwen/Qwen2.5-3B-Instruct` | ~3.09 B |
 
-Results are scored with substring-based exact match and saved as structured JSON files.
+Results are evaluated using exact match accuracy and format validity, and saved as structured JSON files following the assignment schema. The selected models are similar in size (~3B parameters) but come from different model families, enabling a fair comparison of architecture and prompting behavior. This project focuses on Task 3C: Constrained Decoding and Structured Output.
 
 ---
 
@@ -20,9 +20,9 @@ LLMs-and-Prompting/
 │   └── examples.json       # 30 QA examples (factual, math, reasoning)
 ├── src/
 │   ├── model_loader.py     # Load models & generate text (shared utilities)
-│   ├── task1.py            # Zero-shot experiments
-│   ├── task2.py            # Few-shot experiments (3-shot)
-│   └── task3.py            # Chain-of-thought experiments
+│   ├── task1.py            # Model Selection + 5 Examples
+│   ├── task2.py            # Prompting Techniques
+│   └── task3.py            # Dataset Evaluation
 ├── utils/
 │   ├── prompt_templates.py # Build zero-shot / few-shot / CoT prompts
 │   └── evaluation.py       # Answer extraction, scoring, JSON writer
@@ -57,7 +57,7 @@ pip install -r requirements.txt
 ```
 
 > **GPU note:** If a CUDA-capable GPU is available the models will be loaded in
-> `float16` and run on GPU automatically.  On CPU-only machines inference is
+> `float16` and run on GPU automatically. On CPU-only machines inference is
 > slower but fully functional.
 
 ---
@@ -67,13 +67,13 @@ pip install -r requirements.txt
 Each task script can be run from the **project root**:
 
 ```bash
-# Task 1 – Zero-shot prompting
+# Task 1 – Model Selection + 5 Examples
 python src/task1.py
 
-# Task 2 – Few-shot prompting (3-shot)
+# Task 2 – Prompting Techniques
 python src/task2.py
 
-# Task 3 – Chain-of-thought prompting
+# Task 3 – Dataset Evaluation
 python src/task3.py
 ```
 
@@ -92,51 +92,75 @@ and writes results to the `results/` directory.
 
 ## Output format
 
-Every run produces a JSON file at `results/<experiment>_<model_slug>.json`
-with the following schema:
+Results are saved in a JSON file following the assignment-required schema. Each entry corresponds to a single model run on a single example under a single prompting method.
+
+Example format:
 
 ```json
-{
-  "experiment": "task1_zero_shot",
-  "model": "EleutherAI/gpt-neo-1.3B",
-  "timestamp": "2026-04-02T20:21:34",
-  "results": [
-    {
-      "id": 0,
-      "question": "What is the capital of France?",
-      "expected": "Paris",
-      "category": "factual",
-      "prompt": "Answer the following question concisely.\n\nQuestion: ...\nAnswer:",
-      "output": "Paris",
-      "predicted": "Paris",
-      "score": 1
+[
+  {
+    "example_id": 1,
+    "task_family": "3c",
+    "dataset_name": "custom_dataset",
+    "dataset_item_id": "ex_001",
+
+    "model_name": "meta-llama/Llama-3.2-3B-Instruct",
+    "prompting_method": "few_shot",
+
+    "messages": [
+      {"role": "system", "content": "You are a helpful assistant."},
+      {"role": "user", "content": "Prompt text here"}
+    ],
+
+    "expected_output": "Paris",
+    "raw_model_output": "Paris",
+
+    "scores": {
+      "exact_match": 1,
+      "format_valid": 1
+    },
+
+    "annotation": {
+      "final_label": 1,
+      "notes": "Correct answer"
+    },
+
+    "generation_config": {
+      "temperature": 0,
+      "top_p": 1.0,
+      "max_new_tokens": 50,
+      "num_generations": 1,
+      "seed": 42
     }
-  ],
-  "summary": {
-    "total": 30,
-    "correct": 18,
-    "accuracy": 0.6
   }
-}
+]
 ```
 
-`score` is `1` if the expected answer appears (case-insensitively) anywhere in
-the predicted answer, otherwise `0`.
+Scores are computed using exact match and format validity. Exact match checks whether the predicted output matches the expected answer, while format validity ensures the output follows the required structure. The full evaluation consists of 30 examples × 3 prompting methods × 2 models = 180 total outputs.
 
 ---
 
 ## Dataset
 
-`data/examples.json` contains 30 examples spanning three categories:
+The dataset consists of 30 curated examples designed to evaluate structured output and reasoning ability. The examples span:
 
-| Category | Count | Description |
-|---|---|---|
-| `factual` | 13 | Geography, science, history |
-| `math` | 13 | Arithmetic and word problems |
-| `reasoning` | 4 | Logic and probability |
+- factual questions (e.g., geography, science)
+- mathematical reasoning problems
+- logical reasoning tasks
 
-For **few-shot** experiments (Task 2) the first 3 examples are used as
-in-context demonstrations and the remaining 27 are evaluated.
+The dataset is constructed to provide clear expected answers, enabling exact-match evaluation. The same 30 examples are used across all models and prompting methods to ensure a fair comparison.
+
+--- 
+
+## Prompting Techniques
+
+We evaluate three prompting strategies:
+
+- **Zero-shot**: The model is given only the task prompt without examples. Serves as a baseline.
+- **Few-shot**: The model is provided with a small number of examples (3-shot) to guide its response.
+- **Chain-of-thought (CoT)**: The model is prompted to reason step-by-step before producing a final answer.
+
+These methods are chosen to compare baseline performance, in-context learning, and structured reasoning behavior.
 
 ---
 

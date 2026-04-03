@@ -1,7 +1,17 @@
-"""Task 2 – Few-shot prompting experiments.
+"""Task 2 – Prompting Techniques Comparison.
 
-Evaluates both LLMs using a 3-shot prompt.  The first 3 examples from the
-dataset are used as demonstrations; the remaining 27 examples are evaluated.
+Applies three prompting methods — zero-shot, few-shot (3-shot), and
+chain-of-thought (CoT) — to the five original examples from Task 1.
+Both models are evaluated for each method, and the results are compared.
+
+Prompting Methods:
+  1. Zero-shot: The model receives only the task instruction with no examples.
+     Suitable for well-known tasks; can fail on novel or nuanced problems.
+  2. Few-shot (3-shot): Three in-context examples guide the model's response
+     style and format.  Improves structured output but may overfit to demo style.
+  3. Chain-of-thought (CoT): The model is asked to reason step-by-step before
+     answering.  Helps with multi-step reasoning; adds latency and may
+     over-generate on simple questions.
 
 Usage::
 
@@ -9,7 +19,7 @@ Usage::
     # or
     python src/task2.py
 
-Results are written to results/task2_few_shot_<model_slug>.json.
+Results are written to results/task2_prompting_techniques.json.
 """
 
 import sys
@@ -17,73 +27,122 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.dataset_loader import load_examples, get_few_shot_pool, get_evaluation_set
-from src.model_loader import MODELS, load_model, generate_text
-from utils.prompt_templates import build_few_shot_prompt
-from utils.evaluation import extract_answer, score_answer, save_results
+from src.model_loader import MODELS, load_model, generate_chat, short_name
+from src.task1 import TASK1_EXAMPLES, _is_acceptable
+from utils.prompt_templates import (
+    build_zero_shot_messages,
+    build_few_shot_messages,
+    build_cot_messages,
+)
+from utils.evaluation import save_results
 
 
-EXPERIMENT = "task2_few_shot"
-N_SHOTS = 3
+# Fixed 3-shot demonstrations drawn from the Task 1 examples themselves
+# (using examples 1, 2, and 4 as demonstrations for examples 3 and 5)
+_DEMO_POOL = [
+    {
+        "question": (
+            "Classify the sentiment of the following review as exactly one of: "
+            "Positive, Negative, or Neutral.\n\n"
+            "Review: \"Absolutely loved the product, fast shipping!\""
+        ),
+        "expected": "Positive",
+    },
+    {
+        "question": (
+            "Answer with only the letter of the correct option.\n\n"
+            "Which element has the chemical symbol 'O'?\n"
+            "A) Gold\nB) Oxygen\nC) Osmium\nD) Oganesson"
+        ),
+        "expected": "B",
+    },
+    {
+        "question": (
+            "Name the country described by the clue below. "
+            "Give only the country name.\n\n"
+            "Clue: \"This country is shaped like a boot and is home to the Colosseum.\""
+        ),
+        "expected": "Italy",
+    },
+]
+
+PROMPTING_METHODS = {
+    "zero_shot": build_zero_shot_messages,
+    "few_shot": lambda q: build_few_shot_messages(q, _DEMO_POOL),
+    "cot": build_cot_messages,
+}
+
+MAX_NEW_TOKENS = {
+    "zero_shot": 80,
+    "few_shot": 80,
+    "cot": 200,
+}
 
 
-def run_few_shot(model_name: str) -> str:
-    """Run few-shot experiments for a single model.
-
-    The first *N_SHOTS* examples are used as demonstrations and are excluded
-    from evaluation.
+def run_task2(model_name: str) -> list:
+    """Run all three prompting methods on the 5 Task 1 examples for one model.
 
     Args:
         model_name: HuggingFace model identifier.
 
     Returns:
-        Path to the saved JSON results file.
+        List of result dicts (one per example × method combination).
     """
-    examples = load_examples()
-    demonstrations = get_few_shot_pool(examples, n=N_SHOTS)
-    eval_examples = get_evaluation_set(examples, skip=N_SHOTS)
-
     model, tokenizer = load_model(model_name)
 
     results = []
-    for example in eval_examples:
-        prompt = build_few_shot_prompt(example["question"], demonstrations)
-        raw_output = generate_text(prompt, model, tokenizer, max_new_tokens=60)
-        predicted = extract_answer(raw_output, prompt_type="few_shot")
-        score = score_answer(predicted, example["expected"])
+    for method_name, builder in PROMPTING_METHODS.items():
+        print(f"\n  [Method: {method_name}]")
+        for ex in TASK1_EXAMPLES:
+            messages = builder(ex["question"])
+            raw_output = generate_chat(
+                messages, model, tokenizer,
+                max_new_tokens=MAX_NEW_TOKENS[method_name],
+            )
+            correct = _is_acceptable(raw_output, ex["acceptable"])
 
-        results.append(
-            {
-                "id": example["id"],
-                "question": example["question"],
-                "expected": example["expected"],
-                "category": example["category"],
-                "n_shots": N_SHOTS,
-                "prompt": prompt,
-                "output": raw_output,
-                "predicted": predicted,
-                "score": score,
-            }
-        )
+            print(
+                f"    Ex {ex['id']:02d}: expected={ex['expected']!r:15s} "
+                f"output={raw_output[:80]!r}  [{'OK' if correct else 'WRONG'}]"
+            )
 
-        print(
-            f"  [{example['id']:02d}] expected={example['expected']!r:20s} "
-            f"predicted={predicted!r:20s}  score={score}"
-        )
-
-    output_path = save_results(results, EXPERIMENT, model_name)
-    print(f"\n[task2] Results saved to: {output_path}")
-    return output_path
+            results.append(
+                {
+                    "id": ex["id"],
+                    "task": ex["task"],
+                    "question": ex["question"],
+                    "expected": ex["expected"],
+                    "category": ex["category"],
+                    "model": model_name,
+                    "prompting_method": method_name,
+                    "messages": messages,
+                    "output": raw_output,
+                    "correct": correct,
+                }
+            )
+    return results
 
 
 def main() -> None:
-    """Entry point: run few-shot experiments for all models."""
-    print("=" * 60)
-    print(f"Task 2 – {N_SHOTS}-shot prompting")
-    print("=" * 60)
+    """Entry point: run Task 2 for all models and prompting methods."""
+    print("=" * 70)
+    print("Task 2 – Prompting Techniques Comparison")
+    print("=" * 70)
+    print("\nThree prompting methods are evaluated on the 5 Task 1 examples:")
+    print("  1. zero_shot  – No in-context examples; baseline performance.")
+    print("  2. few_shot   – 3 in-context demonstrations guide format/style.")
+    print("  3. cot        – Step-by-step reasoning before the final answer.")
+
+    all_results = []
     for model_name in MODELS:
-        print(f"\n--- Model: {model_name} ---")
-        run_few_shot(model_name)
+        print(f"\n\n{'='*70}")
+        print(f"Model: {model_name}")
+        print("=" * 70)
+        results = run_task2(model_name)
+        all_results.extend(results)
+
+    path = save_results(all_results, "task2_prompting_techniques", "both_models")
+    print(f"\n[task2] Results saved to: {path}")
 
 
 if __name__ == "__main__":

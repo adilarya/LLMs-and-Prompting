@@ -1,39 +1,53 @@
 """Model loading utilities for the LLMs-and-Prompting project.
 
-Supported models (1B-3B parameter range):
-  - EleutherAI/gpt-neo-1.3B  (~1.3 B parameters)
-  - EleutherAI/gpt-neo-2.7B  (~2.7 B parameters)
+Supported models (1B-3B parameter range, instruction-tuned):
+  - meta-llama/Llama-3.2-3B-Instruct  (~3.21 B parameters, Meta LLaMA family)
+  - Qwen/Qwen2.5-3B-Instruct           (~3.09 B parameters, Alibaba Qwen family)
 
-Both models are causal language models available on the HuggingFace Hub and
-work with the standard ``transformers`` AutoModelForCausalLM / AutoTokenizer
-API.
+Both are instruction-tuned chat models that use the standard HuggingFace
+``AutoModelForCausalLM`` / ``AutoTokenizer`` API with ``apply_chat_template``
+for proper message formatting.
 """
 
-from typing import Tuple
+from typing import Dict, List, Tuple
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
-# The two models evaluated in all experiments
-MODEL_1 = "EleutherAI/gpt-neo-1.3B"
-MODEL_2 = "EleutherAI/gpt-neo-2.7B"
+# The two models evaluated in all experiments.
+# They are similar in size (~3 B) but come from different model families.
+MODEL_1 = "meta-llama/Llama-3.2-3B-Instruct"
+MODEL_2 = "Qwen/Qwen2.5-3B-Instruct"
 
 MODELS = [MODEL_1, MODEL_2]
+
+
+def short_name(model_name: str) -> str:
+    """Return the final path component of a HuggingFace model identifier.
+
+    Args:
+        model_name: Full HuggingFace model identifier (e.g. 'meta-llama/Llama-3.2-3B-Instruct').
+
+    Returns:
+        The part after the last '/' (e.g. 'Llama-3.2-3B-Instruct').
+    """
+    return model_name.split("/")[-1]
 
 
 def load_model(
     model_name: str,
     device: str = None,
 ) -> Tuple[AutoModelForCausalLM, AutoTokenizer]:
-    """Load a causal LM and its tokenizer from the HuggingFace Hub.
+    """Load an instruction-tuned causal LM and its tokenizer from the HuggingFace Hub.
 
     The model is moved to *device* (auto-detected if not specified).
     ``torch_dtype=torch.float16`` is used when a CUDA device is available to
     reduce memory consumption.
 
     Args:
-        model_name: HuggingFace model identifier (e.g. 'EleutherAI/gpt-neo-1.3B').
+        model_name: HuggingFace model identifier
+                    (e.g. 'meta-llama/Llama-3.2-3B-Instruct').
         device: Target device string ('cuda', 'cpu', …).  If *None* the
                 function selects CUDA when available, otherwise CPU.
 
@@ -50,7 +64,6 @@ def load_model(
 
     tokenizer = AutoTokenizer.from_pretrained(model_name)
 
-    # Some tokenizers (e.g. GPT-Neo) do not set a pad token by default.
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
@@ -65,30 +78,44 @@ def load_model(
     return model, tokenizer
 
 
-def generate_text(
-    prompt: str,
+def generate_chat(
+    messages: List[Dict[str, str]],
     model: AutoModelForCausalLM,
     tokenizer: AutoTokenizer,
     max_new_tokens: int = 100,
     temperature: float = 0.0,
+    seed: int = 42,
 ) -> str:
-    """Generate text from a prompt using a causal language model.
+    """Generate a response for a list of chat messages using an instruction-tuned model.
 
-    Greedy decoding is used by default (``temperature=0.0`` / ``do_sample=False``)
-    for reproducibility.
+    The messages are formatted via the tokenizer's ``apply_chat_template``
+    method so that model-specific special tokens are inserted correctly.
+    Greedy decoding (``temperature=0.0``) is the default for reproducibility.
 
     Args:
-        prompt: The input prompt string.
+        messages: List of dicts with 'role' ('system'/'user'/'assistant') and
+                  'content' keys.
         model: A loaded causal LM.
         tokenizer: The corresponding tokenizer.
         max_new_tokens: Maximum number of new tokens to generate.
         temperature: Sampling temperature.  Set to 0.0 for greedy decoding.
+        seed: Random seed (used only when ``temperature > 0``).
 
     Returns:
-        The newly generated text (the prompt prefix is stripped).
+        The newly generated assistant text (prompt prefix is stripped).
     """
+    if temperature > 0.0:
+        torch.manual_seed(seed)
+
     device = next(model.parameters()).device
-    inputs = tokenizer(prompt, return_tensors="pt", truncation=True, max_length=1024)
+
+    # Format the conversation using the model's chat template
+    text = tokenizer.apply_chat_template(
+        messages,
+        tokenize=False,
+        add_generation_prompt=True,
+    )
+    inputs = tokenizer(text, return_tensors="pt", truncation=True, max_length=2048)
     inputs = {k: v.to(device) for k, v in inputs.items()}
     input_length = inputs["input_ids"].shape[1]
 
@@ -103,7 +130,32 @@ def generate_text(
             pad_token_id=tokenizer.pad_token_id,
         )
 
-    # Decode only the newly generated tokens (strip the prompt)
     new_ids = output_ids[0][input_length:]
     generated = tokenizer.decode(new_ids, skip_special_tokens=True)
     return generated.strip()
+
+
+def generate_text(
+    prompt: str,
+    model: AutoModelForCausalLM,
+    tokenizer: AutoTokenizer,
+    max_new_tokens: int = 100,
+    temperature: float = 0.0,
+) -> str:
+    """Generate text from a raw prompt string (legacy helper).
+
+    Wraps *prompt* as a single user message and delegates to
+    :func:`generate_chat`.
+
+    Args:
+        prompt: The input prompt string.
+        model: A loaded causal LM.
+        tokenizer: The corresponding tokenizer.
+        max_new_tokens: Maximum number of new tokens to generate.
+        temperature: Sampling temperature.  Set to 0.0 for greedy decoding.
+
+    Returns:
+        The newly generated text (the prompt prefix is stripped).
+    """
+    messages = [{"role": "user", "content": prompt}]
+    return generate_chat(messages, model, tokenizer, max_new_tokens, temperature)

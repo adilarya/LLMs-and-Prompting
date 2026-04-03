@@ -1,7 +1,12 @@
-"""Task 1 – Zero-shot prompting experiments.
+"""Task 1 – Model Selection and Original Example Comparison.
 
-Evaluates both LLMs (EleutherAI/gpt-neo-1.3B and EleutherAI/gpt-neo-2.7B)
-on all 30 dataset examples using a simple zero-shot prompt.
+Runs five original (prompt, expected answer) examples on both models using
+zero-shot prompting, then prints a side-by-side comparison table and saves
+the results to JSON.
+
+The five examples are designed for Task 3C (Constrained Decoding and
+Structured Output): they test whether the models can respond with a specific
+label, category, or concise structured answer.
 
 Usage::
 
@@ -9,74 +14,158 @@ Usage::
     # or
     python src/task1.py
 
-Results are written to results/task1_zero_shot_<model_slug>.json.
+Results are written to results/task1_model_comparison.json.
 """
 
 import sys
 import os
 
-# Allow running from the project root without installing the package
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from data.dataset_loader import load_examples
-from src.model_loader import MODELS, load_model, generate_text
-from utils.prompt_templates import build_zero_shot_prompt
+from src.model_loader import MODELS, MODEL_1, MODEL_2, load_model, generate_chat, short_name
+from utils.prompt_templates import build_zero_shot_messages
 from utils.evaluation import extract_answer, score_answer, save_results
 
 
-EXPERIMENT = "task1_zero_shot"
+# ---------------------------------------------------------------------------
+# Five original examples (Task 1)
+# Each has a clearly defined expected answer or acceptable answer set.
+# ---------------------------------------------------------------------------
+
+TASK1_EXAMPLES = [
+    {
+        "id": 1,
+        "task": "Sentiment classification (constrained label)",
+        "question": (
+            "Classify the sentiment of the following review as exactly one of: "
+            "Positive, Negative, or Neutral.\n\n"
+            "Review: \"The battery died after two hours and customer support never replied.\""
+        ),
+        "expected": "Negative",
+        "acceptable": {"negative"},
+        "category": "classification",
+    },
+    {
+        "id": 2,
+        "task": "Multiple-choice factual question",
+        "question": (
+            "Answer with only the letter of the correct option.\n\n"
+            "Which of the following is a prime number?\n"
+            "A) 4\nB) 6\nC) 11\nD) 15"
+        ),
+        "expected": "C",
+        "acceptable": {"c", "c) 11", "11"},
+        "category": "multiple_choice",
+    },
+    {
+        "id": 3,
+        "task": "Structured JSON extraction",
+        "question": (
+            "Extract the name and age from the sentence below and return them "
+            "in JSON format with keys \"name\" and \"age\".\n\n"
+            "Sentence: \"Maria just turned 31 last Tuesday.\""
+        ),
+        "expected": '{"name": "Maria", "age": 31}',
+        "acceptable": {"maria", '"age": 31', "age\": 31"},
+        "category": "json_extraction",
+    },
+    {
+        "id": 4,
+        "task": "Country identification from clue",
+        "question": (
+            "Name the country described by the clue below. "
+            "Give only the country name.\n\n"
+            "Clue: \"This is the world's largest country by land area and spans eleven time zones.\""
+        ),
+        "expected": "Russia",
+        "acceptable": {"russia"},
+        "category": "factual_constrained",
+    },
+    {
+        "id": 5,
+        "task": "Part-of-speech label",
+        "question": (
+            "Identify the part of speech of the underlined word. "
+            "Choose one: noun, verb, adjective, adverb, preposition.\n\n"
+            "Sentence: \"She ran **quickly** to catch the bus.\"\n"
+            "Underlined word: quickly"
+        ),
+        "expected": "adverb",
+        "acceptable": {"adverb"},
+        "category": "linguistic_label",
+    },
+]
 
 
-def run_zero_shot(model_name: str) -> str:
-    """Run zero-shot experiments for a single model.
+def _is_acceptable(raw_output: str, acceptable: set) -> int:
+    """Return 1 if the raw output contains any acceptable answer (case-insensitive)."""
+    low = raw_output.lower()
+    return int(any(ans in low for ans in acceptable))
+
+
+def run_task1(model_name: str) -> list:
+    """Run Task 1 zero-shot comparison for a single model.
 
     Args:
         model_name: HuggingFace model identifier.
 
     Returns:
-        Path to the saved JSON results file.
+        List of result dicts for each example.
     """
-    examples = load_examples()
     model, tokenizer = load_model(model_name)
 
     results = []
-    for example in examples:
-        prompt = build_zero_shot_prompt(example["question"])
-        raw_output = generate_text(prompt, model, tokenizer, max_new_tokens=60)
-        predicted = extract_answer(raw_output, prompt_type="zero_shot")
-        score = score_answer(predicted, example["expected"])
+    for ex in TASK1_EXAMPLES:
+        messages = build_zero_shot_messages(ex["question"])
+        raw_output = generate_chat(messages, model, tokenizer, max_new_tokens=80)
+        correct = _is_acceptable(raw_output, ex["acceptable"])
 
         results.append(
             {
-                "id": example["id"],
-                "question": example["question"],
-                "expected": example["expected"],
-                "category": example["category"],
-                "prompt": prompt,
+                "id": ex["id"],
+                "task": ex["task"],
+                "question": ex["question"],
+                "expected": ex["expected"],
+                "category": ex["category"],
+                "model": model_name,
                 "output": raw_output,
-                "predicted": predicted,
-                "score": score,
+                "correct": correct,
             }
         )
-
-        print(
-            f"  [{example['id']:02d}] expected={example['expected']!r:20s} "
-            f"predicted={predicted!r:20s}  score={score}"
-        )
-
-    output_path = save_results(results, EXPERIMENT, model_name)
-    print(f"\n[task1] Results saved to: {output_path}")
-    return output_path
+    return results
 
 
 def main() -> None:
-    """Entry point: run zero-shot experiments for all models."""
-    print("=" * 60)
-    print("Task 1 – Zero-shot prompting")
-    print("=" * 60)
+    """Entry point: run Task 1 on both models and print comparison table."""
+    print("=" * 70)
+    print("Task 1 – Model Selection & Original Example Comparison")
+    print("=" * 70)
+
+    all_results: dict = {}
     for model_name in MODELS:
         print(f"\n--- Model: {model_name} ---")
-        run_zero_shot(model_name)
+        results = run_task1(model_name)
+        all_results[model_name] = results
+
+    # Print side-by-side comparison
+    print("\n\n" + "=" * 70)
+    print("COMPARISON TABLE")
+    print("=" * 70)
+    for ex in TASK1_EXAMPLES:
+        idx = ex["id"] - 1
+        r1 = all_results[MODEL_1][idx]
+        r2 = all_results[MODEL_2][idx]
+        print(f"\nExample {ex['id']}: {ex['task']}")
+        print(f"  Expected : {ex['expected']}")
+        print(f"  {short_name(MODEL_1):40s}: {r1['output'][:120]!r}  [{'OK' if r1['correct'] else 'WRONG'}]")
+        print(f"  {short_name(MODEL_2):40s}: {r2['output'][:120]!r}  [{'OK' if r2['correct'] else 'WRONG'}]")
+
+    # Save combined results
+    combined = []
+    for model_name in MODELS:
+        combined.extend(all_results[model_name])
+    path = save_results(combined, "task1_model_comparison", "both_models")
+    print(f"\n[task1] Results saved to: {path}")
 
 
 if __name__ == "__main__":

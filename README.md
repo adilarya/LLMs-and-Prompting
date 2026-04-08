@@ -4,7 +4,7 @@ A Python project that evaluates three prompting techniques — **zero-shot**, **
 
 | Model | Family | Parameters |
 |---|---|---|
-| `meta-llama/Llama-3.2-3B-Instruct` | Meta LLaMA | ~3.21 B |
+| `HuggingFaceTB/SmolLM3-3B` | HuggingFace SmolLM | ~3 B |
 | `Qwen/Qwen2.5-3B-Instruct` | Alibaba Qwen | ~3.09 B |
 
 The selected models are similar in size (~3 B parameters) but come from **different model families**, enabling a fair comparison of architecture, tokenizer, and instruction-following behavior.
@@ -65,8 +65,9 @@ pip install -r requirements.txt
 
 ### 4. HuggingFace access
 
-`meta-llama/Llama-3.2-3B-Instruct` requires accepting Meta's license on
-HuggingFace and setting your access token:
+Both models are publicly available on the HuggingFace Hub and do not require
+a license agreement. No authentication token is needed for standard usage.
+If you hit download rate limits or want to use a private model, set your token:
 
 ```bash
 huggingface-cli login
@@ -129,7 +130,7 @@ single example under a single prompting method:
     "dataset_name": "custom_constrained_output_dataset",
     "dataset_item_id": "ex_000",
 
-    "model_name": "meta-llama/Llama-3.2-3B-Instruct",
+    "model_name": "HuggingFaceTB/SmolLM3-3B",
     "prompting_method": "zero_shot",
 
     "messages": [

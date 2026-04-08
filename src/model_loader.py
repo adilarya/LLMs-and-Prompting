@@ -1,8 +1,8 @@
 """Model loading utilities for the LLMs-and-Prompting project.
 
 Supported models (1B-3B parameter range, instruction-tuned):
-  - meta-llama/Llama-3.2-3B-Instruct  (~3.21 B parameters, Meta LLaMA family)
-  - Qwen/Qwen2.5-3B-Instruct           (~3.09 B parameters, Alibaba Qwen family)
+  - HuggingFaceTB/SmolLM3-3B  (~3 B parameters, HuggingFace SmolLM family)
+  - Qwen/Qwen2.5-3B-Instruct  (~3.09 B parameters, Alibaba Qwen family)
 
 Both are instruction-tuned chat models that use the standard HuggingFace
 ``AutoModelForCausalLM`` / ``AutoTokenizer`` API with ``apply_chat_template``
@@ -17,7 +17,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # The two models evaluated in all experiments.
 # They are similar in size (~3 B) but come from different model families.
-MODEL_1 = "meta-llama/Llama-3.2-3B-Instruct"
+MODEL_1 = "HuggingFaceTB/SmolLM3-3B"
 MODEL_2 = "Qwen/Qwen2.5-3B-Instruct"
 
 MODELS = [MODEL_1, MODEL_2]
@@ -27,10 +27,10 @@ def short_name(model_name: str) -> str:
     """Return the final path component of a HuggingFace model identifier.
 
     Args:
-        model_name: Full HuggingFace model identifier (e.g. 'meta-llama/Llama-3.2-3B-Instruct').
+        model_name: Full HuggingFace model identifier (e.g. 'HuggingFaceTB/SmolLM3-3B').
 
     Returns:
-        The part after the last '/' (e.g. 'Llama-3.2-3B-Instruct').
+        The part after the last '/' (e.g. 'SmolLM3-3B').
     """
     return model_name.split("/")[-1]
 
@@ -47,7 +47,7 @@ def load_model(
 
     Args:
         model_name: HuggingFace model identifier
-                    (e.g. 'meta-llama/Llama-3.2-3B-Instruct').
+                    (e.g. 'HuggingFaceTB/SmolLM3-3B').
         device: Target device string ('cuda', 'cpu', …).  If *None* the
                 function selects CUDA when available, otherwise CPU.
 

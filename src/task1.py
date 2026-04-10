@@ -19,18 +19,15 @@ Results are written to results/task1_model_comparison.json.
 
 import sys
 import os
+import re
+import json
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.model_loader import MODELS, MODEL_1, MODEL_2, load_model, generate_chat, short_name
 from utils.prompt_templates import build_zero_shot_messages
-from utils.evaluation import extract_answer, score_answer, save_results
+from utils.evaluation import extract_answer, save_results
 
-
-# ---------------------------------------------------------------------------
-# Five original examples (Task 1)
-# Each has a clearly defined expected answer or acceptable answer set.
-# ---------------------------------------------------------------------------
 
 TASK1_EXAMPLES = [
     {
@@ -42,7 +39,6 @@ TASK1_EXAMPLES = [
             "Review: \"The battery died after two hours and customer support never replied.\""
         ),
         "expected": "Negative",
-        "acceptable": {"negative"},
         "category": "classification",
     },
     {
@@ -54,7 +50,6 @@ TASK1_EXAMPLES = [
             "A) 4\nB) 6\nC) 11\nD) 15"
         ),
         "expected": "C",
-        "acceptable": {"c", "c) 11", "11"},
         "category": "multiple_choice",
     },
     {
@@ -66,7 +61,6 @@ TASK1_EXAMPLES = [
             "Sentence: \"Maria just turned 31 last Tuesday.\""
         ),
         "expected": '{"name": "Maria", "age": 31}',
-        "acceptable": {"maria", '"age": 31', "age\": 31"},
         "category": "json_extraction",
     },
     {
@@ -78,7 +72,6 @@ TASK1_EXAMPLES = [
             "Clue: \"This is the world's largest country by land area and spans eleven time zones.\""
         ),
         "expected": "Russia",
-        "acceptable": {"russia"},
         "category": "factual_constrained",
     },
     {
@@ -91,34 +84,114 @@ TASK1_EXAMPLES = [
             "Underlined word: quickly"
         ),
         "expected": "adverb",
-        "acceptable": {"adverb"},
         "category": "linguistic_label",
     },
 ]
 
 
-def _is_acceptable(raw_output: str, acceptable: set) -> int:
-    """Return 1 if the raw output contains any acceptable answer (case-insensitive)."""
-    low = raw_output.lower()
-    return int(any(ans in low for ans in acceptable))
+def _normalize(text: str) -> str:
+    return text.strip().lower()
+
+
+def _extract_multiple_choice_letter(text: str) -> str:
+    """Extract a single answer letter like A/B/C/D from model text."""
+    text = text.strip()
+
+    # exact single-letter answer
+    if re.fullmatch(r"[A-Da-d]", text):
+        return text.upper()
+
+    # patterns like "C)", "C.", "C:"
+    m = re.match(r"^\s*([A-Da-d])[\)\.\:\-]?\s*$", text)
+    if m:
+        return m.group(1).upper()
+
+    # first standalone option letter
+    m = re.search(r"\b([A-Da-d])\b", text)
+    if m:
+        return m.group(1).upper()
+
+    return text.strip().upper()
+
+
+def _extract_json_object(text: str):
+    """Try to extract the first JSON object from text."""
+    text = text.strip()
+
+    # direct parse first
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+
+    # try to find {...}
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            return None
+
+    return None
+
+
+def evaluate_example(example: dict, raw_output: str) -> tuple[str, int, str]:
+    """Return (predicted, correct, note) for one example."""
+    category = example["category"]
+
+    if category in {"classification", "factual_constrained", "linguistic_label"}:
+        predicted = extract_answer(raw_output)
+        correct = int(_normalize(predicted) == _normalize(example["expected"]))
+        note = (
+            "Correct exact label."
+            if correct
+            else f"Incorrect label. Expected {example['expected']}."
+        )
+        return predicted, correct, note
+
+    if category == "multiple_choice":
+        predicted = _extract_multiple_choice_letter(extract_answer(raw_output))
+        correct = int(predicted == example["expected"].upper())
+        if correct:
+            note = "Correct option letter."
+        else:
+            note = f"Wrong option format or answer. Expected only {example['expected']}."
+        return predicted, correct, note
+
+    if category == "json_extraction":
+        obj = _extract_json_object(raw_output)
+        if obj is None:
+            return raw_output.strip(), 0, "Invalid JSON."
+
+        predicted = json.dumps(obj, ensure_ascii=False)
+        correct = int(
+            isinstance(obj, dict)
+            and obj.get("name") == "Maria"
+            and obj.get("age") == 31
+        )
+        note = (
+            "Valid JSON with correct fields."
+            if correct
+            else "JSON parsed, but fields/values are incorrect."
+        )
+        return predicted, correct, note
+
+    predicted = extract_answer(raw_output)
+    correct = 0
+    note = "Unknown category."
+    return predicted, correct, note
 
 
 def run_task1(model_name: str) -> list:
-    """Run Task 1 zero-shot comparison for a single model.
-
-    Args:
-        model_name: HuggingFace model identifier.
-
-    Returns:
-        List of result dicts for each example.
-    """
+    """Run Task 1 zero-shot comparison for a single model."""
     model, tokenizer = load_model(model_name)
 
     results = []
     for ex in TASK1_EXAMPLES:
         messages = build_zero_shot_messages(ex["question"])
         raw_output = generate_chat(messages, model, tokenizer, max_new_tokens=80)
-        correct = _is_acceptable(raw_output, ex["acceptable"])
+
+        predicted, correct, note = evaluate_example(ex, raw_output)
 
         results.append(
             {
@@ -128,8 +201,10 @@ def run_task1(model_name: str) -> list:
                 "expected": ex["expected"],
                 "category": ex["category"],
                 "model": model_name,
-                "output": raw_output,
+                "raw_output": raw_output,
+                "predicted": predicted,
                 "correct": correct,
+                "note": note,
             }
         )
     return results
@@ -141,29 +216,41 @@ def main() -> None:
     print("Task 1 – Model Selection & Original Example Comparison")
     print("=" * 70)
 
-    all_results: dict = {}
+    all_results = {}
     for model_name in MODELS:
         print(f"\n--- Model: {model_name} ---")
         results = run_task1(model_name)
         all_results[model_name] = results
 
-    # Print side-by-side comparison
     print("\n\n" + "=" * 70)
     print("COMPARISON TABLE")
     print("=" * 70)
+
     for ex in TASK1_EXAMPLES:
         idx = ex["id"] - 1
         r1 = all_results[MODEL_1][idx]
         r2 = all_results[MODEL_2][idx]
-        print(f"\nExample {ex['id']}: {ex['task']}")
-        print(f"  Expected : {ex['expected']}")
-        print(f"  {short_name(MODEL_1):40s}: {r1['output'][:120]!r}  [{'OK' if r1['correct'] else 'WRONG'}]")
-        print(f"  {short_name(MODEL_2):40s}: {r2['output'][:120]!r}  [{'OK' if r2['correct'] else 'WRONG'}]")
 
-    # Save combined results
+        print(f"\nExample {ex['id']}: {ex['task']}")
+        print(f"  Prompt    : {ex['question'][:100]}...")
+        print(f"  Expected  : {ex['expected']}")
+        print(
+            f"  {short_name(MODEL_1):40s}: "
+            f"{r1['predicted'][:80]!r}  "
+            f"[{'OK' if r1['correct'] else 'WRONG'}]  "
+            f"{r1['note']}"
+        )
+        print(
+            f"  {short_name(MODEL_2):40s}: "
+            f"{r2['predicted'][:80]!r}  "
+            f"[{'OK' if r2['correct'] else 'WRONG'}]  "
+            f"{r2['note']}"
+        )
+
     combined = []
     for model_name in MODELS:
         combined.extend(all_results[model_name])
+
     path = save_results(combined, "task1_model_comparison", "both_models")
     print(f"\n[task1] Results saved to: {path}")
 

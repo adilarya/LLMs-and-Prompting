@@ -8,9 +8,9 @@ Prompting Methods:
   1. Zero-shot: The model receives only the task instruction with no examples.
      Suitable for well-known tasks; can fail on novel or nuanced problems.
   2. Few-shot (3-shot): Three in-context examples guide the model's response
-     style and format.  Improves structured output but may overfit to demo style.
+     style and format. Improves structured output but may overfit to demo style.
   3. Chain-of-thought (CoT): The model is asked to reason step-by-step before
-     answering.  Helps with multi-step reasoning; adds latency and may
+     answering. Helps with multi-step reasoning; adds latency and may
      over-generate on simple questions.
 
 Usage::
@@ -27,8 +27,8 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.model_loader import MODELS, load_model, generate_chat, short_name
-from src.task1 import TASK1_EXAMPLES, _is_acceptable
+from src.model_loader import MODELS, load_model, generate_chat
+from src.task1 import TASK1_EXAMPLES, evaluate_example
 from utils.prompt_templates import (
     build_zero_shot_messages,
     build_few_shot_messages,
@@ -37,8 +37,7 @@ from utils.prompt_templates import (
 from utils.evaluation import save_results
 
 
-# Fixed 3-shot demonstrations drawn from the Task 1 examples themselves
-# (using examples 1, 2, and 4 as demonstrations for examples 3 and 5)
+# Fixed 3-shot demonstrations
 _DEMO_POOL = [
     {
         "question": (
@@ -80,14 +79,7 @@ MAX_NEW_TOKENS = {
 
 
 def run_task2(model_name: str) -> list:
-    """Run all three prompting methods on the 5 Task 1 examples for one model.
-
-    Args:
-        model_name: HuggingFace model identifier.
-
-    Returns:
-        List of result dicts (one per example × method combination).
-    """
+    """Run all three prompting methods on the 5 Task 1 examples for one model."""
     model, tokenizer = load_model(model_name)
 
     results = []
@@ -96,14 +88,18 @@ def run_task2(model_name: str) -> list:
         for ex in TASK1_EXAMPLES:
             messages = builder(ex["question"])
             raw_output = generate_chat(
-                messages, model, tokenizer,
+                messages,
+                model,
+                tokenizer,
                 max_new_tokens=MAX_NEW_TOKENS[method_name],
             )
-            correct = _is_acceptable(raw_output, ex["acceptable"])
+
+            predicted, correct, note = evaluate_example(ex, raw_output)
 
             print(
                 f"    Ex {ex['id']:02d}: expected={ex['expected']!r:15s} "
-                f"output={raw_output[:80]!r}  [{'OK' if correct else 'WRONG'}]"
+                f"predicted={predicted[:40]!r}  "
+                f"[{'OK' if correct else 'WRONG'}]  {note}"
             )
 
             results.append(
@@ -116,8 +112,10 @@ def run_task2(model_name: str) -> list:
                     "model": model_name,
                     "prompting_method": method_name,
                     "messages": messages,
-                    "output": raw_output,
+                    "raw_output": raw_output,
+                    "predicted": predicted,
                     "correct": correct,
+                    "note": note,
                 }
             )
     return results
@@ -135,7 +133,7 @@ def main() -> None:
 
     all_results = []
     for model_name in MODELS:
-        print(f"\n\n{'='*70}")
+        print(f"\n\n{'=' * 70}")
         print(f"Model: {model_name}")
         print("=" * 70)
         results = run_task2(model_name)
